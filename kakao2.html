@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>KakaoMap with Pins and Roadview</title>
+  <meta charset="UTF-8">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=API-KEY"></script> <!-- 카카오 API 키를 여기에 넣으세요 -->
+  <style>
+    #map, #roadview {
+      height: 400px;
+      width: 50%;
+      float: left;
+    }
+    .coordinate {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container mt-3">
+    <div class="mb-3">
+      <input type="text" id="address" class="form-control" placeholder="주소 또는 좌표를 입력하세요" onkeypress="handleKeyPress(event)">
+      <button class="btn btn-primary mt-2" onclick="searchLocation()">검색</button>
+    </div>
+    <div id="map"></div>
+    <div id="roadview"></div>
+    <div id="currentRoadviewCoords" class="mt-2"></div>
+    <div id="pinInfo" class="mt-3"></div>
+    <button class="btn btn-danger mt-2" onclick="removeAllPins()">모든 핀 삭제</button>
+  </div>
+
+  <script>
+    var mapContainer = document.getElementById('map');
+    var mapOption = { 
+        center: new kakao.maps.LatLng(37.5665, 126.9780),
+        level: 4
+    };
+
+    var map = new kakao.maps.Map(mapContainer, mapOption);
+    var roadviewContainer = document.getElementById('roadview');
+    var roadview = new kakao.maps.Roadview(roadviewContainer);
+    var roadviewClient = new kakao.maps.RoadviewClient();
+    var geocoder = new kakao.maps.services.Geocoder();
+    
+    var pins = [];
+
+    kakao.maps.event.addListener(map, 'click', function(mouseEvent) {
+      var latlng = mouseEvent.latLng;
+      var marker = new kakao.maps.Marker({
+          position: latlng,
+          map: map
+      });
+      pins.push(marker);
+      updatePinInfo();
+      updateRoadview(latlng);
+    });
+
+    function updateRoadview(latlng) {
+      roadviewClient.getNearestPanoId(latlng, 50, function(panoId) {
+          roadview.setPanoId(panoId, latlng);
+      });
+    }
+
+    function updatePinInfo() {
+      var pinInfoHtml = '<table class="table table-bordered"><thead><tr><th>핀 이름</th><th>위도</th><th>경도</th><th>복사</th><th>삭제</th><th>수정</th></tr></thead><tbody>';
+      pins.forEach(function(pin, index) {
+        var position = pin.getPosition();
+        pinInfoHtml += `<tr><td class="coordinate" onclick="moveToPin(${position.getLat()}, ${position.getLng()})">핀${index + 1}</td><td class="coordinate" onclick="copyToClipboard(${position.getLat()})">${position.getLat()}</td><td class="coordinate" onclick="copyToClipboard(${position.getLng()})">${position.getLng()}</td><td><button class="btn btn-small btn-secondary" onclick="copyToClipboard('${position.getLat()}, ${position.getLng()}')">복사</button></td><td><button class="btn btn-small btn-danger" onclick="removePin(${index})">삭제</button></td><td><button class="btn btn-small btn-warning" onclick="editPinName(${index})">수정</button></td></tr>`;
+      });
+      pinInfoHtml += '</tbody></table>';
+      document.getElementById('pinInfo').innerHTML = pinInfoHtml;
+    }
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        Swal.fire('알림', '좌표가 클립보드에 복사되었습니다.', 'success');
+      });
+    }
+
+    function removePin(index) {
+      pins[index].setMap(null);
+      pins.splice(index, 1);
+      updatePinInfo();
+    }
+
+    function removeAllPins() {
+      pins.forEach(function(pin) {
+        pin.setMap(null);
+      });
+      pins = [];
+      updatePinInfo();
+    }
+
+    function searchLocation() {
+      var query = document.getElementById('address').value;
+      geocoder.addressSearch(query, function(result, status) {
+        if (status === kakao.maps.services.Status.OK) {
+          var latlng = new kakao.maps.LatLng(result[0].y, result[0].x);
+          map.setCenter(latlng);
+          updateRoadview(latlng);
+        } else {
+          Swal.fire('알림', '주소 또는 좌표를 찾을 수 없습니다.', 'error');
+        }
+      });
+    }
+
+    function handleKeyPress(e) {
+      if (e.keyCode === 13 || e.which === 13) {
+        searchLocation();
+      }
+    }
+
+    window.onload = function() {
+      var initialPosition = new kakao.maps.LatLng(37.5665, 126.9780);
+      roadviewClient.getNearestPanoId(initialPosition, 50, function(panoId) {
+        if (panoId) {
+          roadview.setPanoId(panoId, initialPosition);
+        }
+      });
+    };
+
+    kakao.maps.event.addListener(roadview, 'position_changed', function() {
+      var latlng = roadview.getPosition();
+      var currentCoords = `현재 로드뷰 좌표: 위도 ${latlng.getLat()}, 경도 ${latlng.getLng()}`;
+      document.getElementById("currentRoadviewCoords").innerText = currentCoords;
+    });
+
+    function moveToPin(lat, lng) {
+      var latlng = new kakao.maps.LatLng(lat, lng);
+      map.setCenter(latlng);
+      updateRoadview(latlng);
+    }
+
+    function editPinName(index) {
+      Swal.fire({
+        title: '핀 이름 수정',
+        input: 'text',
+        inputPlaceholder: '새로운 핀 이름을 입력하세요',
+        showCancelButton: true,
+        confirmButtonText: '수정',
+        cancelButtonText: '취소',
+      }).then((result) => {
+        if (result.isConfirmed) {
+          Swal.fire('알림', '핀 이름이 수정되었습니다.', 'success');
+          updatePinInfo();
+        }
+      });
+    }
+  </script>
+</body>
+</html>

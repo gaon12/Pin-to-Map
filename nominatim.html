@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>OpenStreetMap and KakaoMap with Pins</title>
+  <meta charset="UTF-8">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css"/>
+  <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <style>
+    #map {
+      height: 400px;
+      width: 100%;
+	  float: left;
+    }
+	.kakaomaps {
+	  float: left;
+	  width: 65%;
+	}
+    .coordinate {
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container mt-3">
+    <div class="mb-3">
+      <input type="text" id="address" class="form-control" placeholder="주소 또는 좌표를 입력하세요" onkeypress="handleKeyPress(event)">
+      <button class="btn btn-primary mt-2" onclick="searchLocation()">검색</button>
+    </div>
+    <div class="row">
+      <div class="col-md-4">
+        <div id="map"></div>
+      </div>
+      <div class="col-md-4 kakaomaps">
+        <iframe id="kakaoMap" frameborder="0" scrolling="no" marginheight="0" marginwidth="0" 
+        src="https://map.kakao.com/link/roadview/37.5665,126.9780" style="width:100%;height:400px;"></iframe>
+      </div>
+    </div>
+    <div id="currentRoadviewCoords" class="mt-2"></div>
+    <button class="btn btn-danger mt-2" onclick="removeAllPins()">모든 핀 삭제</button>
+    <div id="pinInfo" class="mt-3"></div>
+  </div>
+
+  <script>
+    var map = L.map('map').setView([37.5665, 126.9780], 13);
+    var pins = [];
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    map.on('click', function(e) {
+      var pin = L.marker([e.latlng.lat, e.latlng.lng]).addTo(map);
+      pins.push(pin);
+      updatePinInfo();
+      updateKakaoMap(e.latlng.lat, e.latlng.lng);
+    });
+
+    function updateKakaoMap(lat, lon) {
+      document.getElementById("kakaoMap").src = `https://map.kakao.com/link/roadview/${lat},${lon}`;
+      document.getElementById("currentRoadviewCoords").innerText = `현재 로드뷰 좌표: 위도 ${lat}, 경도 ${lon}`;
+    }
+
+    function updatePinInfo() {
+      var pinInfoHtml = '<table class="table table-bordered"><thead><tr><th>핀 번호</th><th>위도</th><th>경도</th><th>복사</th><th>삭제</th></tr></thead><tbody>';
+      pins.forEach(function(pin, index) {
+        var latLng = pin.getLatLng();
+        pinInfoHtml += `<tr><td>핀${index + 1}</td><td class="coordinate" onclick="copyToClipboard(${latLng.lat})">${latLng.lat}</td><td class="coordinate" onclick="copyToClipboard(${latLng.lng})">${latLng.lng}</td><td><button class="btn btn-small btn-secondary" onclick="copyToClipboard('${latLng.lat}, ${latLng.lng}')">복사</button></td><td><button class="btn btn-small btn-danger" onclick="removePin(${index})">삭제</button></td></tr>`;
+      });
+      pinInfoHtml += '</tbody></table>';
+      document.getElementById('pinInfo').innerHTML = pinInfoHtml;
+    }
+
+    function copyToClipboard(text) {
+      navigator.clipboard.writeText(text).then(() => {
+        Swal.fire('알림', '좌표가 클립보드에 복사되었습니다.', 'success');
+      });
+    }
+
+    function removePin(index) {
+      map.removeLayer(pins[index]);
+      pins.splice(index, 1);
+      updatePinInfo();
+    }
+
+    function removeAllPins() {
+      pins.forEach(function(pin) {
+        map.removeLayer(pin);
+      });
+      pins = [];
+      updatePinInfo();
+    }
+
+    function searchLocation() {
+      var query = document.getElementById('address').value;
+      var currentZoom = map.getZoom();
+      if(query.includes(',')) {
+        var coords = query.split(',');
+        var lat = parseFloat(coords[0].trim());
+        var lon = parseFloat(coords[1].trim());
+        map.setView([lat, lon], currentZoom);
+        updateKakaoMap(lat, lon);
+      } else {
+        fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${query}`)
+          .then(response => response.json())
+          .then(data => {
+            if (data.length > 0) {
+              var lat = parseFloat(data[0].lat);
+              var lon = parseFloat(data[0].lon);
+              map.setView([lat, lon], currentZoom);
+              updateKakaoMap(lat, lon);
+            } else {
+              Swal.fire('알림', '주소 또는 좌표를 찾을 수 없습니다.', 'error');
+            }
+          });
+      }
+    }
+
+    function handleKeyPress(e) {
+      if (e.keyCode === 13 || e.which === 13) {
+        searchLocation();
+      }
+    }
+  </script>
+</body>
+</html>
